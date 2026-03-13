@@ -99,13 +99,21 @@ By exposing Zarr arrays as SQL tables in DuckDB, users can:
 
 ### Native C++ Reimplementation
 
-We are reimplementing the zarr-datafusion logic in C++ instead of using FFI (Foreign Function Interface). This approach offers several advantages:
+We are reimplementing the [zarr-datafusion](https://docs.rs/zarr-datafusion/latest/zarr_datafusion/) logic in C++ instead of using FFI (Foreign Function Interface). This approach offers several advantages:
 
 - **Avoids FFI complexity**: No need to deal with memory management across language boundaries, complex build systems, or difficult debugging across FFI boundaries
 - **Better integration**: Direct integration with DuckDB's memory management and execution model
 - **Simpler debugging**: All code runs in the same memory space with consistent tooling
 
-**We will NOT use tensorstore** - it's too heavy with complex dependencies that would complicate the build and runtime environment.
+**We will NOT use any C++ Zarr library** (including [tensorstore](https://github.com/google/tensorstore)) - they are too heavy with complex dependencies that would complicate the build and runtime environment. We evaluated several alternatives:
+
+- **[xtensor-stack/xtensor-zarr](https://github.com/xtensor-stack/xtensor-zarr)**: Built on xtensor for tensor operations, primarily focused on *creating* Zarr arrays rather than reading. Uses CMake and has tight coupling to the xtensor ecosystem.
+
+- **[abcucberkeley/cpp-zarr](https://github.com/abcucberkeley/cpp-zarr)**: UC Berkeley library focused on image processing use cases. Less actively maintained and specialized for specific scientific workflows.
+
+- **[constantinpape/z5](https://github.com/constantinpape/z5)**: C++ library for n5 format (a Zarr variant), used in scientific computing. Requires complex build dependencies and is specialized for niche use cases.
+
+Additionally, using DuckDB's internal [filesystem package](https://github.com/duckdb/duckdb/tree/main/src/common/file_system) provides better integration - we can leverage their existing abstractions for local files, S3, GCS, etc. without FFI complexity. This avoids the overhead of bridging between external C++ libraries and DuckDB's memory management.
 
 ### Implementation Plan
 
@@ -162,6 +170,19 @@ For each cell in the output table:
 4. Apply strided access to read the value
 
 This is simply strided memory access - the same technique used by NumPy arrays. No complex data structures or algorithms required.
+
+#### Comparison with xarray-sql's Implementation
+
+Our C++ implementation differs from the [xarray-sql Python implementation](https://github.com/alxmrs/xarray-sql/blob/f1f6694ba6b16b04c73f95b082af031203e8fd83/xarray_sql/df.py#L217) in several key ways:
+
+| Aspect | xarray-sql (Python) | XQL (C++) |
+|--------|---------------------|-----------|
+| **Approach** | Uses xarray's `to_dataframe()` with broadcast/ravel operations | Direct strided memory access in C++ |
+| **Memory** | Creates intermediate pandas DataFrames (~5x memory overhead) | Zero-copy where possible, ~2x overhead |
+| **Batch processing** | Uses `iter_record_batches()` with numpy index arithmetic | Native DataChunk iteration in DuckDB |
+| **Dependencies** | Requires xarray, pandas, numpy, PyArrow | Pure C++ with DuckDB integration |
+
+The key insight from xarray-sql's `iter_record_batches()` is their use of strided index arithmetic: `coord_idx = (row_idx // stride[k]) % shape[k]`. Our C++ implementation applies the same principle but eliminates the Python interpreter overhead and avoids the pandas round-trip entirely.
 
 ## 3. Key Interfaces
 
@@ -595,6 +616,7 @@ This allows:
 - **Zarr** (https://zarr.dev): N-dimensional array storage format
 - **Apache Arrow** (https://arrow.apache.org): Columnar data format
 - **DataFusion** (https://datafusion.apache.org): Query engine
+- **[IceChunk](https://icechunk.io/)** (https://icechunk.io/): Cloud-native columnar storage (potential future backend)
 
 ---
 
