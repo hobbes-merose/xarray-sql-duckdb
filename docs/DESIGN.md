@@ -95,6 +95,74 @@ By exposing Zarr arrays as SQL tables in DuckDB, users can:
 
 ---
 
+## 2.1 Implementation Approach
+
+### Native C++ Reimplementation
+
+We are reimplementing the zarr-datafusion logic in C++ instead of using FFI (Foreign Function Interface). This approach offers several advantages:
+
+- **Avoids FFI complexity**: No need to deal with memory management across language boundaries, complex build systems, or difficult debugging across FFI boundaries
+- **Better integration**: Direct integration with DuckDB's memory management and execution model
+- **Simpler debugging**: All code runs in the same memory space with consistent tooling
+
+**We will NOT use tensorstore** - it's too heavy with complex dependencies that would complicate the build and runtime environment.
+
+### Implementation Plan
+
+The implementation is divided into 5 phases, targeting approximately **950 lines of C++ code** total:
+
+#### Phase 1: Zarr Metadata Parser (~200 LOC)
+- Parse .zarr JSON metadata files
+- Extract shape, dtype, chunks, fill_value, compressors
+- Support both Zarr v2 and v3 metadata formats
+- Validate metadata consistency
+
+#### Phase 2: Chunk Reader + Decompression (~300 LOC)
+- Read binary chunk data from local files or cloud storage
+- Decompress using c-blosc2 (already in DuckDB tree)
+- Support multiple codecs: blosc, zstd, gzip, lz4
+- Handle partial chunk reads for query pushdown
+
+#### Phase 3: Pivot Algorithm (~200 LOC)
+- Core array-to-table transform algorithm
+- Strided memory access to convert chunk data to row-oriented format
+- Handle dimension ordering and axis transformations
+- The core pivot algorithm is remarkably simple - only ~30 lines of code using strided memory access
+
+#### Phase 4: DuckDB Integration (~150 LOC)
+- Table function registration (xql_scan)
+- Schema inference from Zarr metadata
+- DataChunk conversion to DuckDB vectors
+- Predicate pushdown support
+
+#### Phase 5: Cloud Storage (~100 LOC)
+- Use Arrow/DuckDBs existing object_store integration
+- Support S3, GCS, Azure Blob storage backends
+- Leverage connection pooling and caching
+
+### Lightweight Dependencies
+
+All dependencies are already available in the DuckDB ecosystem:
+
+| Dependency | Purpose | Status |
+|------------|---------|--------|
+| nlohmann/json | Header-only JSON parsing | Lightweight, single header |
+| c-blosc2 | Chunk decompression | Already in DuckDB tree |
+| libzstd | Zstd compression | Already in DuckDB tree |
+| Arrow C++ | Arrow integration | Already a DuckDB dependency |
+
+### The Pivot Algorithm
+
+The pivot algorithm is the heart of the transformation - converting n-dimensional array data into a tabular format for SQL queries. The core implementation is remarkably simple (about 30 lines):
+
+For each cell in the output table:
+1. Calculate the n-dimensional index from the row position
+2. Determine which chunk contains that index
+3. Calculate the offset within the chunk
+4. Apply strided access to read the value
+
+This is simply strided memory access - the same technique used by NumPy arrays. No complex data structures or algorithms required.
+
 ## 3. Key Interfaces
 
 ### DuckDB Extension Entry Point
