@@ -47,15 +47,19 @@ By exposing Zarr arrays as SQL tables in DuckDB, users can:
 ┌─────────────────────────────────────────────────────────────────┐
 │                         DuckDB Core                             │
 │  ┌─────────────────────────────────────────────────────────┐   │
-│  │                   Query Execution Engine                 │   │
+│  │              Query Planning & Execution                  │   │
+│  │  • SQL parsing, logical planning, optimization          │   │
+│  │  • Predicate pushdown, column pruning                  │   │
 │  └─────────────────────────────────────────────────────────┘   │
 │                              │                                   │
 │  ┌─────────────────────────────────────────────────────────┐   │
 │  │              XQL Extension (this project)               │   │
 │  │  ┌─────────────────────────────────────────────────────┐ │   │
-│  │  │              TableProvider Implementation          │ │   │
-│  │  │  • scan_plan() - Creates execution plan            │ │   │
-│  │  │  • Scan() - Returns RecordBatch iterator           │ │   │
+│  │  │              Table Function: xql_scan              │ │   │
+│  │  │  • CreateTableFunction() - Register function       │ │   │
+│  │  │  • bind() - Validate params, infer schema          │ │   │
+│  │  │  • scan() - Return DataChunk iterator              │ │   │
+│  │  │  • GlobalState - Parallel scan coordination        │ │   │
 │  │  └─────────────────────────────────────────────────────┘ │   │
 │  └─────────────────────────────────────────────────────────┘   │
 │                              │                                   │
@@ -83,59 +87,93 @@ By exposing Zarr arrays as SQL tables in DuckDB, users can:
 
 ### Data Flow
 
-1. **Registration**: User registers a Zarr store with `CREATE TABLE ... USING xql`
-2. **Planning**: DuckDB creates a scan plan via `TableProvider::scan_plan()`
-3. **Execution**: XQL creates a DataFusion execution plan for Zarr
-4. **Reading**: DataFusion reads chunks, applies filters, converts types
-5. **Conversion**: RecordBatch is converted to DuckDB vectors
+1. **Function Call**: User calls `SELECT * FROM xql_scan(path='...', array='temp')`
+2. **Binding**: DuckDB calls table function `bind()` to validate parameters and define return schema
+3. **Planning**: DuckDB optimizes query (predicate pushdown, column pruning)
+4. **Scanning**: XQL function returns a `DataChunk` iterator via parallel scan
+5. **Conversion**: Zarr data (via zarr-datafusion) is converted to DuckDB vectors
 
 ---
 
 ## 3. Key Interfaces
 
-### DuckDB Extension Interface
+### DuckDB Extension Entry Point
 
 The extension follows the standard DuckDB extension pattern:
 
 ```cpp
-class XqlExtension : public Extension {
-public:
-    void Load(ExtensionLoader &db) override;
-    std::string Name() override;
-    std::string Version() const override;
-};
+#include <duckdb.hpp>
+
+extern "C" {
+DUCKDB_CPP_EXTENSION_ENTRY(xql, loader) {
+    duckdb::LoadInternal(loader);
+}
+}
 ```
 
 This registers the extension and its functions with DuckDB at load time.
 
-### TableProvider Implementation
+### Table Function Implementation
 
-The core interface is DataFusion's `TableProvider`, which exposes external data as a SQL table:
+DuckDB extensions use **Table Functions** to expose custom data sources. The core pattern:
 
 ```cpp
 #include <duckdb/function/table_function.hpp>
 
-class ZarrTableProvider : public TableFunction {
-public:
-    // TableProvider interface
-    virtual std::string GetName() override;
-    virtual TableFunctionType GetTableFunctionType() override;
-    virtual std::unique_ptr<FunctionData> Bind(
-        ClientContext &context,
-        TableFunctionBindInput &input,
-        vector<LogicalType> &return_types,
-        vector<string> &names
-    ) override;
-    virtual std::unique_ptr<PhysicalOperator> Scan(
-        ClientContext &context,
-        const FunctionData *bind_data,
-        const vector<column_t> &column_ids,
-        const vector<idx_t> &max_throughput_columns,
-        const vector<string> &names,
-        typename idx_t max_output_rows,
-        parallel_state_t *parallel_state
-    ) override;
+using namespace duckdb;
+
+// 1. Define the table function
+static void XqlScanFunction(ClientContext &context, TableFunctionInput &data, DataChunk &output) {
+    auto &bind_data = (XqlScanBindData &)*data.bind_data;
+    auto &global_state = (XqlScanGlobalState &)*data.global_state;
+
+    // Read from Zarr via zarr-datafusion
+    // Convert RecordBatch to DataChunk (DuckDB vectors)
+    // ...
+}
+
+// 2. Bind function - validates params and defines schema
+static unique_ptr<FunctionData> XqlScanBind(ClientContext &context, TableFunctionBindInput &input,
+                                              vector<LogicalType> &return_types, vector<string> &names) {
+    // Extract path, array name from input.named_params
+    // Read Zarr metadata to determine schema
+    // Populate return_types and names (dimension columns + data columns)
+    return make_uniq<XqlScanBindData>(...);
+}
+
+// 3. Register the table function
+void LoadInternal(ExtensionLoader &loader) {
+    TableFunction xql_scan("xql_scan", {LogicalType::VARCHAR}, XqlScanFunction, XqlScanBind);
+    xql_scan.named_params["path"] = LogicalType::VARCHAR;
+    xql_scan.named_params["array"] = LogicalType::VARCHAR;
+    loader.RegisterFunction(xql_scan);
+}
+```
+
+### Parallel Table Scan (Advanced)
+
+For performance with large datasets, implement `GlobalState` for parallel coordination:
+
+```cpp
+// GlobalState for parallel scanning
+struct XqlScanGlobalState : public GlobalState {
+    idx_t current_chunk_idx = 0;
+    mutex lock;
+    // Track which Zarr chunks have been read
 };
+
+// Table function with parallel support
+static unique_ptr<GlobalState> XqlScanInitGlobal(ClientContext &context, TableFunctionInitInput &input) {
+    return make_uniq<XqlScanGlobalState>();
+}
+
+static void XqlScanFunction(ClientContext &context, TableFunctionInput &data, DataChunk &output) {
+    auto &global_state = (XqlScanGlobalState &)*data.global_state;
+
+    // Thread-safe chunk reading
+    lock_guard<mutex> lg(global_state.lock);
+    // Read next chunk from Zarr...
+}
 ```
 
 ### Zarr to Table Mapping
@@ -169,69 +207,79 @@ SQL Table (temperature):
 ### Scan Execution Flow
 
 ```cpp
-// In ZarrTableProvider implementation
-std::unique_ptr<PhysicalOperator> ZarrTableProvider::Scan(
-    ClientContext &context,
-    const FunctionData *bind_data,
-    const vector<column_id> &column_ids,
-    ...
-) {
-    // 1. Extract bind parameters (path, array name, filters)
-    auto &config = bind_data->config;
+// In table function implementation
+static void XqlScanFunction(ClientContext &context, TableFunctionInput &data, DataChunk &output) {
+    auto &bind_data = (XqlScanBindData &)*data.bind_data;
 
-    // 2. Create DataFusion execution plan
+    // 1. Extract parameters from bind data
+    auto &zarr_path = bind_data.zarr_path;
+    auto &array_name = bind_data.array_name;
+    auto column_ids = output.ColumnIds();
+
+    // 2. Create DataFusion execution plan via zarr-datafusion
     auto df_ctx = ExecutionContext();
     auto scan = ZarrScanBuilder(df_ctx)
-        .with_store(config.zarr_path)
-        .with_array(config.array_name)
-        .with_predicates(convert_duckdb_filters(column_ids, column_ids))
+        .with_store(zarr_path)
+        .with_array(array_name)
+        .with_projection(convert_duckdb_columns(column_ids))
         .build();
 
-    // 3. Return DuckDB physical operator that wraps DataFusion
-    return std::make_unique<ZarrScanOperator>(std::move(scan));
+    // 3. Execute and convert RecordBatch to DuckDB DataChunk
+    auto reader = scan->Execute();
+    while (auto batch = reader->Next()) {
+        // Convert Arrow RecordBatch to DuckDB vectors
+        ArrowToDuckDB(batch, output);
+    }
 }
 ```
 
 ### Predicate Pushdown
 
-The extension must translate DuckDB's filter expressions to Zarr chunk selection:
+DuckDB automatically pushes down predicates to the table function. Access them via the `data` parameter:
 
 ```cpp
-// Example: WHERE time BETWEEN 100 AND 200 AND temp > 300
-// Becomes: Read only chunks where time index ∈ [100, 200]
+static unique_ptr<FunctionData> XqlScanBind(ClientContext &context, TableFunctionBindInput &input,
+                                              vector<LogicalType> &return_types, vector<string> &names) {
+    // DuckDB passes filter expressions to the scan function
+    // We extract them from input.filters
 
-struct ZarrPredicate {
-    // Convert DuckDB expression to Zarr chunk selection
-    std::optional<ChunkSelection> Convert(
-        const Expression &duckdb_expr,
-        const ArraySchema &schema
-    );
-};
+    // Example: WHERE time BETWEEN 100 AND 200 AND temp > 300
+    // input.filters contains these expressions
+    // Convert to zarr-datafusion predicate for chunk selection
+
+    auto predicate = ConvertDuckDBFilters(input.filters, schema);
+    return make_uniq<XqlScanBindData>(..., std::move(predicate));
+}
 ```
 
 ---
 
 ## 4. User-Facing API
 
-### Registering a Zarr Array
+### Querying Zarr Arrays
+
+The extension exposes a table function `xql_scan` that users call directly:
 
 ```sql
--- Basic registration (infers schema from Zarr metadata)
-CREATE TABLE temperature
-USING xql
-OPTIONS (
-    path 's3://noaa-gfs-pds/gfs.20210101/00/temp',
-    array 'temperature'
-);
+-- Basic scan (infers schema from Zarr metadata)
+SELECT * FROM xql_scan(
+    path => 's3://noaa-gfs-pds/gfs.20210101/00/temp',
+    array => 'temperature'
+) LIMIT 100;
 
--- With explicit column mapping
-CREATE TABLE weather_data
-USING xql
-OPTIONS (
-    path 's3://my-bucket/weather.zarr',
-    array 'surface',
-    coord_columns 'time,lat,lon',
-    data_columns 'temperature,pressure,humidity'
+-- With explicit column selection
+SELECT time, lat, lon, temperature
+FROM xql_scan(
+    path => 's3://my-bucket/weather.zarr',
+    array => 'surface'
+)
+WHERE time = 0 AND lat BETWEEN 40 AND 50;
+
+-- Creating a view for repeated queries
+CREATE VIEW temperature AS
+SELECT * FROM xql_scan(
+    path => 's3://noaa-gfs-pds/gfs.20210101/00/temp',
+    array => 'temperature'
 );
 ```
 
@@ -266,8 +314,8 @@ LOAD xql;
 -- Show extension version
 SELECT xql_version();
 
--- List registered arrays
-SELECT * FROM xql_arrays();
+-- List arrays in a Zarr store
+SELECT * FROM xql_list('/path/to/store.zarr');
 ```
 
 ---
@@ -347,35 +395,36 @@ This crate handles:
 
 - [ ] Set up zarr-datafusion as a vcpkg/Cargo dependency
 - [ ] Implement basic table function registration
-- [ ] Implement `ZARR_LIST` function to discover arrays in a store
+- [ ] Implement `xql_list` function to discover arrays in a store
 - [ ] Read Zarr metadata and expose as DuckDB result
 - [ ] Basic test with local filesystem Zarr
 
-**Deliverable**: `SELECT * FROM xql_list_arrays('/path/to/zarr.zarr')`
+**Deliverable**: `SELECT * FROM xql_list('/path/to/zarr.zarr')`
 
-### Milestone 2: TableProvider Implementation (Week 3-4)
+### Milestone 2: Table Function Implementation (Week 3-4)
 
 **Goal**: Basic table scans work
 
-- [ ] Implement `TableProvider` interface
+- [ ] Implement table function interface (bind + scan)
 - [ ] Integrate zarr-datafusion `ZarrScanBuilder`
-- [ ] Convert DataFusion `RecordBatch` to DuckDB vectors
+- [ ] Convert DataFusion `RecordBatch` to DuckDB `DataChunk`
 - [ ] Support simple queries (SELECT without filters)
 - [ ] Test with small Zarr arrays
 
-**Deliverable**: `SELECT * FROM zarr_table` returns data
+**Deliverable**: `SELECT * FROM xql_scan(path='/path', array='temp')` returns data
 
 ### Milestone 3: Predicate Pushdown (Week 5-6)
 
 **Goal**: Efficient queries with filters
 
-- [ ] Translate DuckDB expressions to Zarr chunk selection
+- [ ] Access DuckDB filter expressions via TableFunctionBindInput
+- [ ] Translate to zarr-datafusion predicates for chunk selection
 - [ ] Implement time/dimension range filtering
 - [ ] Column pruning (only read requested columns)
 - [ ] Chunk cache for frequently accessed data
 - [ ] Benchmark with large datasets
 
-**Deliverable**: `SELECT * FROM t WHERE time BETWEEN x AND y` only reads relevant chunks
+**Deliverable**: `SELECT * FROM xql_scan(...) WHERE time BETWEEN x AND y` only reads relevant chunks
 
 ### Milestone 4: Cloud Storage Support (Week 7-8)
 
@@ -411,7 +460,7 @@ This crate handles:
 - [ ] Performance benchmarking
 - [ ] Compatibility testing with DuckDB versions
 
-**Deliverable**: `INSTALL xql FROM community; LOAD xql;`
+**Deliverable**: `INSTALL xql FROM community; LOAD xql;` followed by `SELECT * FROM xql_scan(...)`
 
 ---
 
@@ -440,9 +489,9 @@ Zarr arrays use chunked storage. The extension must:
 
 ### Memory Management
 
-- **Vector-based**: Convert Arrow batches to DuckDB vectors in batches
+- **DataChunk-based**: Convert Arrow RecordBatches to DuckDB DataChunks
 - **Streaming**: Process large arrays in chunks to avoid memory pressure
-- **Parallel execution**: Use DuckDB's parallel scan infrastructure
+- **Parallel execution**: Use DuckDB's GlobalState for parallel scan coordination
 
 ### Extension Loading
 
