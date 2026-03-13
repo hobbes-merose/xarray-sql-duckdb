@@ -67,12 +67,12 @@ By exposing Zarr arrays as SQL tables in DuckDB, users can:
                                │
                                ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                    zarr-datafusion Crate                        │
+│                    XQL C++ Implementation                        │
 │  ┌─────────────────────────────────────────────────────────┐   │
-│  │  ZarrScanBuilder → ZarrExecNode → RecordBatch           │   │
-│  │  • Chunk selection based on query predicates            │   │
-│  │  • Dimension filtering                                   │   │
-│  │  • Type conversion                                       │   │
+│  │  Zarr Metadata Parser → Chunk Reader → Pivot Algorithm │   │
+│  │  • Parse .zarr JSON metadata (shape, dtype, chunks)     │   │
+│  │  • Read/decompress binary chunks (blosc2, zstd, gzip)  │   │
+│  │  • Transform n-dimensional data to tabular rows        │   │
 │  └─────────────────────────────────────────────────────────┘   │
 └──────────────────────────────┬───────────────────────────────────┘
                                │
@@ -91,7 +91,7 @@ By exposing Zarr arrays as SQL tables in DuckDB, users can:
 2. **Binding**: DuckDB calls table function `bind()` to validate parameters and define return schema
 3. **Planning**: DuckDB optimizes query (predicate pushdown, column pruning)
 4. **Scanning**: XQL function returns a `DataChunk` iterator via parallel scan
-5. **Conversion**: Zarr data (via zarr-datafusion) is converted to DuckDB vectors
+5. **Conversion**: Zarr data (via native C++ implementation) is converted to DuckDB vectors
 
 ---
 
@@ -195,8 +195,8 @@ static void XqlScanFunction(ClientContext &context, TableFunctionInput &data, Da
     auto &bind_data = (XqlScanBindData &)*data.bind_data;
     auto &global_state = (XqlScanGlobalState &)*data.global_state;
 
-    // Read from Zarr via zarr-datafusion
-    // Convert RecordBatch to DataChunk (DuckDB vectors)
+    // Read from Zarr via native C++ implementation
+    // Convert to DataChunk (DuckDB vectors)
     // ...
 }
 
@@ -284,20 +284,15 @@ static void XqlScanFunction(ClientContext &context, TableFunctionInput &data, Da
     auto &array_name = bind_data.array_name;
     auto column_ids = output.ColumnIds();
 
-    // 2. Create DataFusion execution plan via zarr-datafusion
-    auto df_ctx = ExecutionContext();
-    auto scan = ZarrScanBuilder(df_ctx)
-        .with_store(zarr_path)
-        .with_array(array_name)
-        .with_projection(convert_duckdb_columns(column_ids))
-        .build();
+    // 2. Use native C++ implementation to read Zarr data
+    //    (ZarrMetadataParser -> ChunkReader -> PivotAlgorithm)
+    auto zarr_metadata = ZarrMetadataParser::Parse(zarr_path, array_name);
+    auto chunk_reader = ChunkReader(zarr_path, zarr_metadata);
+    auto pivot = PivotAlgorithm(zarr_metadata);
 
-    // 3. Execute and convert RecordBatch to DuckDB DataChunk
-    auto reader = scan->Execute();
-    while (auto batch = reader->Next()) {
-        // Convert Arrow RecordBatch to DuckDB vectors
-        ArrowToDuckDB(batch, output);
-    }
+    // 3. Read chunks and pivot to row-oriented format
+    auto chunks = chunk_reader.ReadRelevantChunks(bind_data.predicate);
+    pivot.PivotToDuckDBVectors(chunks, output, column_ids);
 }
 ```
 
@@ -313,7 +308,7 @@ static unique_ptr<FunctionData> XqlScanBind(ClientContext &context, TableFunctio
 
     // Example: WHERE time BETWEEN 100 AND 200 AND temp > 300
     // input.filters contains these expressions
-    // Convert to zarr-datafusion predicate for chunk selection
+    // Convert to XQL predicate for chunk selection
 
     auto predicate = ConvertDuckDBFilters(input.filters, schema);
     return make_uniq<XqlScanBindData>(..., std::move(predicate));
@@ -395,63 +390,74 @@ SELECT * FROM xql_list('/path/to/store.zarr');
 | Dependency | Version | Purpose |
 |------------|---------|---------|
 | DuckDB | (submodule) | Core database, extension framework |
-| zarr | 0.5+ | Zarr array format (Rust crate) |
-| datafusion | 40+ | Query execution engine |
-| arrow | 50+ | Columnar data format |
-| async-trait | 0.1 | Async interface support |
-| object_store | 0.10+ | Cloud storage abstraction |
+| nlohmann/json | 3.10+ | Header-only JSON parsing for Zarr metadata |
+| c-blosc2 | (in DuckDB tree) | Chunk decompression |
+| libzstd | (in DuckDB tree) | Zstd compression support |
+| Arrow C++ | (in DuckDB tree) | Columnar data format integration |
 
 ### Dependency Graph
 
 ```
 duckdb
   │
-  └── xql_extension
+  └── xql_extension (native C++ implementation)
         │
-        ├── zarr-datafusion (Rust crate, to be integrated)
+        ├── nlohmann/json (Zarr metadata parsing)
         │     │
-        │     ├── datafusion (physical planning, execution)
-        │     │     │
-        │     │     ├── arrow
-        │     │     └── ...
-        │     │
-        │     ├── zarr (array format)
-        │     │     │
-        │     │     └── bytes
-        │     │
-        │     └── object_store (S3, GCS, Azure)
-        │           │
-        │           └── async-trait
+        │     └── Header-only JSON parsing
         │
-        └── openssl (already in vcpkg.json)
+        ├── c-blosc2 (chunk decompression)
+        │     │
+        │     └── Already in DuckDB tree
+        │
+        ├── libzstd (zstd compression)
+        │     │
+        │     └── Already in DuckDB tree
+        │
+        └── Arrow C++ (data conversion)
+              │
+              └── Already a DuckDB dependency
+
 ```
 
-### Integration with zarr-datafusion
+### Native C++ Implementation Components
 
-The `zarr-datafusion` crate provides the DataFusion integration:
+The native C++ implementation consists of three core components:
 
-```rust
-// From zarr-datafusion crate
-pub struct ZarrScanBuilder {
-    store: Store,
-    array_name: String,
-    predicate: Option<Expr>,
-    projection: Option<Vec<String>>,
-}
+```cpp
+// Zarr Metadata Parser - parses .zarr JSON metadata
+class ZarrMetadataParser {
+public:
+    static ZarrArrayMetadata Parse(const std::string& path, const std::string& array_name);
+    // Handles: shape, dtype, chunks, fill_value, compressors
+    // Supports: Zarr v2 and v3 formats
+};
 
-impl ZarrScanBuilder {
-    pub fn new(store: Store, array_name: String) -> Self;
-    pub fn with_predicate(mut self, predicate: Expr) -> Self;
-    pub fn with_projection(mut self, columns: Vec<String>) -> Self;
-    pub fn build(self) -> Result<Arc<dyn ExecutionPlan>>;
-}
+// Chunk Reader - reads and decompresses binary chunk data
+class ChunkReader {
+public:
+    ChunkReader(const std::string& path, const ZarrArrayMetadata& metadata);
+    std::vector<ChunkData> ReadRelevantChunks(const ChunkPredicate& predicate);
+    // Handles: local files, cloud storage (S3/GCS/Azure)
+    // Supports: blosc, zstd, gzip, lz4 decompression
+};
+
+// Pivot Algorithm - transforms array data to tabular format
+class PivotAlgorithm {
+public:
+    PivotAlgorithm(const ZarrArrayMetadata& metadata);
+    void PivotToDuckDBVectors(const std::vector<ChunkData>& chunks,
+                              DataChunk& output,
+                              const std::vector<idx_t>& column_ids);
+    // Core array-to-table transform using strided memory access
+};
 ```
 
-This crate handles:
+These components handle:
 - Reading Zarr metadata (`.zarray`, `.zattrs`)
 - Chunk selection based on predicates
-- Async I/O for remote stores
-- Type conversion (Zarr dtype → Arrow dtype)
+- I/O for local and remote stores
+- Type conversion (Zarr dtype → DuckDB types)
 
 ---
 
@@ -461,7 +467,7 @@ This crate handles:
 
 **Goal**: Basic extension structure with Zarr discovery
 
-- [ ] Set up zarr-datafusion as a vcpkg/Cargo dependency
+- [ ] Set up C++ dependencies (nlohmann/json, c-blosc2)
 - [ ] Implement basic table function registration
 - [ ] Implement `xql_list` function to discover arrays in a store
 - [ ] Read Zarr metadata and expose as DuckDB result
@@ -474,8 +480,8 @@ This crate handles:
 **Goal**: Basic table scans work
 
 - [ ] Implement table function interface (bind + scan)
-- [ ] Integrate zarr-datafusion `ZarrScanBuilder`
-- [ ] Convert DataFusion `RecordBatch` to DuckDB `DataChunk`
+- [ ] Integrate native C++ ZarrMetadataParser, ChunkReader, PivotAlgorithm
+- [ ] Convert native C++ data to DuckDB vectors
 - [ ] Support simple queries (SELECT without filters)
 - [ ] Test with small Zarr arrays
 
@@ -486,7 +492,7 @@ This crate handles:
 **Goal**: Efficient queries with filters
 
 - [ ] Access DuckDB filter expressions via TableFunctionBindInput
-- [ ] Translate to zarr-datafusion predicates for chunk selection
+- [ ] Translate to native C++ predicates for chunk selection
 - [ ] Implement time/dimension range filtering
 - [ ] Column pruning (only read requested columns)
 - [ ] Chunk cache for frequently accessed data
