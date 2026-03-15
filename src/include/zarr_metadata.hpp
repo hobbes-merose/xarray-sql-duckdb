@@ -1,6 +1,7 @@
 #pragma once
 
 #include "duckdb.hpp"
+#include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
 #include <memory>

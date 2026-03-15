@@ -8,6 +8,7 @@
 #include "duckdb/function/table_function.hpp"
 #include "duckdb/main/connection.hpp"
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
+#include "duckdb/common/vector.hpp"
 
 // OpenSSL linked through vcpkg
 #include <openssl/opensslv.h>
@@ -43,7 +44,8 @@ struct ReadZarrMetadataState {
 };
 
 static void ReadZarrMetadataFunction(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
-	auto &state = data_p.state_obj->Cast<ReadZarrMetadataState>();
+	(void)context;
+	auto &state = data_p.bind_data->Cast<ReadZarrMetadataState>();
 
 	if (state.current_index >= state.arrays.size()) {
 		output.SetCardinality(0);
@@ -68,7 +70,7 @@ static void ReadZarrMetadataFunction(ClientContext &context, TableFunctionInput 
 		auto &array_meta = state.arrays[state.current_index + i];
 
 		// Name
-		StringVector::SetString(name_col, i, array_meta.name);
+		FlatVector::GetData<string_t>(name_col)[i] = StringVector::AddStringOrBlob(name_col, array_meta.name);
 
 		// Shape - join as comma-separated string
 		std::string shape_str;
@@ -77,10 +79,10 @@ static void ReadZarrMetadataFunction(ClientContext &context, TableFunctionInput 
 				shape_str += ",";
 			shape_str += std::to_string(array_meta.shape[j]);
 		}
-		StringVector::SetString(shape_col, i, shape_str);
+		FlatVector::GetData<string_t>(shape_col)[i] = StringVector::AddStringOrBlob(shape_col, shape_str);
 
 		// Dtype
-		StringVector::SetString(dtype_col, i, array_meta.dtype);
+		FlatVector::GetData<string_t>(dtype_col)[i] = StringVector::AddStringOrBlob(dtype_col, array_meta.dtype);
 
 		// Chunks - join as comma-separated string
 		std::string chunks_str;
@@ -89,16 +91,19 @@ static void ReadZarrMetadataFunction(ClientContext &context, TableFunctionInput 
 				chunks_str += ",";
 			chunks_str += std::to_string(array_meta.chunks[j]);
 		}
-		StringVector::SetString(chunks_col, i, chunks_str);
+		FlatVector::GetData<string_t>(chunks_col)[i] = StringVector::AddStringOrBlob(chunks_col, chunks_str);
 
 		// Compressor
-		StringVector::SetString(compressor_col, i, array_meta.compressor);
+		FlatVector::GetData<string_t>(compressor_col)[i] =
+		    StringVector::AddStringOrBlob(compressor_col, array_meta.compressor);
 
 		// Zarr version
-		StringVector::SetString(zarr_version_col, i, array_meta.zarr_version == 2 ? "2" : "3");
+		FlatVector::GetData<string_t>(zarr_version_col)[i] =
+		    StringVector::AddStringOrBlob(zarr_version_col, array_meta.zarr_version == 2 ? "2" : "3");
 
 		// Fill value
-		StringVector::SetString(fill_value_col, i, array_meta.fill_value);
+		FlatVector::GetData<string_t>(fill_value_col)[i] =
+		    StringVector::AddStringOrBlob(fill_value_col, array_meta.fill_value);
 	}
 
 	state.current_index += count;
