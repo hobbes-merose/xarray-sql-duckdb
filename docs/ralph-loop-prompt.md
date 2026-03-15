@@ -12,6 +12,11 @@ You are working on duckdb-zarr, a DuckDB extension for querying Zarr arrays with
 ### Your Mission
 Use crosslink to track issues and work through them systematically. Check the crosslink database for high-priority items.
 
+**Crosslink commands:**
+- `crosslink issues` - list all issues with status and priority
+- `crosslink issue <id>` - get details of a specific issue
+- `crosslink --help` - see all available commands
+
 ### Version Control Workflow
 - Use **git worktrees** to manage stacked PRs - create a new worktree for each feature branch so you can work on multiple PRs simultaneously
 - Rebase as necessary to keep history clean
@@ -23,26 +28,18 @@ Use crosslink to track issues and work through them systematically. Check the cr
 - Push feature branches freely and address review feedback in follow-up PRs or commits
 - Use PRs to track review status but don't wait for approval before continuing
 
-### Progress Tracking (IMPORTANT)
-After completing each crosslink issue, write a progress update to `ralph-loop-progress.json` in the repo root:
-
-```json
-{
-  "last_completed_issue": "<issue number and title>",
-  "completed_issues": ["#18: ...", "#19: ..."],
-  "current_work": "<what you're working on now>",
-  "next_up": "<next high-priority issue>",
-  " blockers": []
-}
-```
-
-Update this file after each issue completion so Hobbes (your human collaborator) can monitor your progress.
-
 ### Stop Conditions
 Continue working until you hit:
 - A **blocker** that requires human input (ambiguous requirements, design decisions, external dependencies)
 - An **explicit instruction to pause** from alxmrs
 - When there are no more high-priority issues to work on
+
+**Blocker Convention:**
+When you encounter a blocker:
+1. Create a new issue with title prefixed with "BLOCKED: <brief reason>" 
+2. Add details about what's blocked and what input you need
+3. Set the issue priority to high
+4. Continue working on other high-priority issues if available
 
 Do NOT stop after completing each PR or issue - keep going until you hit a stop condition.
 
@@ -70,7 +67,6 @@ Start by:
 1. Reading DESIGN.md to understand the project architecture
 2. Checking crosslink issues to find the highest priority item
 3. Begin working on that issue
-4. Update ralph-loop-progress.json after each issue completion
 
 ---
 
