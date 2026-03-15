@@ -7,7 +7,12 @@ set(TARGET_NAME zarr)
 # used in cmake with find_package. Feel free to remove or replace with other dependencies.
 # Note that it should also be removed from vcpkg.json to prevent needlessly installing it..
 find_package(OpenSSL REQUIRED)
-find_package(nlohmann_json REQUIRED)
+
+set(EXTENSION_NAME ${TARGET_NAME}_extension)
+set(LOADABLE_EXTENSION_NAME ${TARGET_NAME}_loadable_extension)
+
+project(${TARGET_NAME})
+include_directories(src/include)
 
 # Include DuckDB headers for yyjson
 include_directories(${DUCKDB_SRCDIR}/third_party/yyjson/include)
@@ -16,15 +21,8 @@ include_directories(${DUCKDB_SRCDIR}/third_party/lz4)
 include_directories(${DUCKDB_SRCDIR}/third_party/zstd/include)
 include_directories(${DUCKDB_SRCDIR}/third_party/miniz)
 
-set(EXTENSION_NAME ${TARGET_NAME}_extension)
-set(LOADABLE_EXTENSION_NAME ${TARGET_NAME}_loadable_extension)
-
-project(${TARGET_NAME})
-include_directories(src/include)
-
 set(EXTENSION_SOURCES
     src/zarr_extension.cpp
-    src/zarr_metadata.cpp
     src/zarr/metadata.cpp
     src/zarr/chunk.cpp
     src/zarr/pivot.cpp
@@ -42,9 +40,9 @@ set(EXTENSION_HEADERS
 build_static_extension(${TARGET_NAME} ${EXTENSION_SOURCES} ${EXTENSION_HEADERS})
 build_loadable_extension(${TARGET_NAME} " " ${EXTENSION_SOURCES} ${EXTENSION_HEADERS})
 
-# Link OpenSSL and nlohmann-json in both the static library as the loadable extension
-target_link_libraries(${EXTENSION_NAME} OpenSSL::SSL OpenSSL::Crypto nlohmann_json::nlohmann_json)
-target_link_libraries(${LOADABLE_EXTENSION_NAME} OpenSSL::SSL OpenSSL::Crypto nlohmann_json::nlohmann_json)
+# Link OpenSSL in both the static library as the loadable extension
+target_link_libraries(${EXTENSION_NAME} OpenSSL::SSL OpenSSL::Crypto)
+target_link_libraries(${LOADABLE_EXTENSION_NAME} OpenSSL::SSL OpenSSL::Crypto)
 
 install(
   TARGETS ${EXTENSION_NAME}
