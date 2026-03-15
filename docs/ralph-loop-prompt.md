@@ -71,3 +71,7 @@ Start by:
 2. Checking crosslink issues to find the highest priority item
 3. Begin working on that issue
 4. Update ralph-loop-progress.json after each issue completion
+
+---
+
+<promise>COMPLETE</promise>
