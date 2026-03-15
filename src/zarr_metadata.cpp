@@ -184,11 +184,6 @@ ZarrArrayMetadata ZarrMetadata::ParseZarray(const std::string &zarray_content, c
 			}
 		}
 
-		// Dimension separator
-		if (json.contains("dimension_separator")) {
-			meta.dimension_separator = json["dimension_separator"].get<std::string>();
-		}
-
 	} catch (std::exception &) {
 		// Return what we have
 	}

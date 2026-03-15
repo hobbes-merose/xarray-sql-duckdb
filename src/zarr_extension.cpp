@@ -15,6 +15,16 @@
 
 namespace duckdb {
 
+//! Bind data for the read_zarr_metadata table function
+struct ReadZarrMetadataBindData : public TableFunctionData {
+	std::vector<ZarrArrayMetadata> arrays;
+};
+
+//! Global state for the read_zarr_metadata table function
+struct ReadZarrMetadataGlobalState : public GlobalTableFunctionState {
+	size_t current_index = 0;
+};
+
 inline void ZarrScalarFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	(void)args;
 	(void)state;
@@ -38,22 +48,63 @@ inline void ZarrOpenSSLVersionScalarFun(DataChunk &args, ExpressionState &state,
 // read_zarr_metadata table function
 // ============================================================================
 
-struct ReadZarrMetadataState {
-	std::vector<ZarrArrayMetadata> arrays;
-	size_t current_index = 0;
-};
+static unique_ptr<FunctionData> ReadZarrMetadataBind(ClientContext &context, TableFunctionBindInput &input,
+                                                     vector<LogicalType> &return_types, vector<string> &names) {
+	(void)context;
+	auto result = make_uniq<ReadZarrMetadataBindData>();
+
+	// Get the path from the function arguments
+	if (input.inputs.empty()) {
+		throw InvalidInputException("read_zarr_metadata requires a path argument");
+	}
+	auto path = input.inputs[0].GetValue<string>();
+
+	// Parse Zarr metadata
+	try {
+		result->arrays = ParseZarrMetadata(path);
+	} catch (const std::exception &e) {
+		throw InvalidInputException("Failed to parse Zarr metadata: " + std::string(e.what()));
+	}
+
+	// Define return types
+	return_types.push_back(LogicalType::VARCHAR); // name
+	return_types.push_back(LogicalType::VARCHAR); // shape
+	return_types.push_back(LogicalType::VARCHAR); // dtype
+	return_types.push_back(LogicalType::VARCHAR); // chunks
+	return_types.push_back(LogicalType::VARCHAR); // compressor
+	return_types.push_back(LogicalType::INTEGER); // zarr_version
+	return_types.push_back(LogicalType::VARCHAR); // fill_value
+
+	names.push_back("name");
+	names.push_back("shape");
+	names.push_back("dtype");
+	names.push_back("chunks");
+	names.push_back("compressor");
+	names.push_back("zarr_version");
+	names.push_back("fill_value");
+
+	return std::move(result);
+}
+
+static unique_ptr<GlobalTableFunctionState> ReadZarrMetadataInit(ClientContext &context,
+                                                                 TableFunctionInitInput &input) {
+	(void)context;
+	(void)input;
+	return make_uniq<ReadZarrMetadataGlobalState>();
+}
 
 static void ReadZarrMetadataFunction(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
 	(void)context;
-	auto &state = data_p.bind_data->Cast<ReadZarrMetadataState>();
+	auto &bind_data = data_p.bind_data->Cast<ReadZarrMetadataBindData>();
+	auto &state = data_p.global_state->Cast<ReadZarrMetadataGlobalState>();
 
-	if (state.current_index >= state.arrays.size()) {
+	if (state.current_index >= bind_data.arrays.size()) {
 		output.SetCardinality(0);
 		return;
 	}
 
 	// Determine how many rows to output
-	idx_t count = std::min((idx_t)STANDARD_VECTOR_SIZE, (idx_t)(state.arrays.size() - state.current_index));
+	idx_t count = std::min((idx_t)STANDARD_VECTOR_SIZE, (idx_t)(bind_data.arrays.size() - state.current_index));
 
 	// Allocate columns
 	output.SetCardinality(count);
@@ -67,7 +118,7 @@ static void ReadZarrMetadataFunction(ClientContext &context, TableFunctionInput 
 
 	// Fill the columns
 	for (idx_t i = 0; i < count; i++) {
-		auto &array_meta = state.arrays[state.current_index + i];
+		auto &array_meta = bind_data.arrays[state.current_index + i];
 
 		// Name
 		FlatVector::GetData<string_t>(name_col)[i] = StringVector::AddStringOrBlob(name_col, array_meta.name);
@@ -107,48 +158,6 @@ static void ReadZarrMetadataFunction(ClientContext &context, TableFunctionInput 
 	}
 
 	state.current_index += count;
-}
-
-static unique_ptr<FunctionData> ReadZarrMetadataBind(ClientContext &context, TableFunctionBindInfo &bind_info,
-                                                     vector<LogicalType> &return_types, vector<string> &names) {
-	(void)context;
-	(void)bind_info;
-	// Define return types
-	return_types.push_back(LogicalType::VARCHAR); // name
-	return_types.push_back(LogicalType::VARCHAR); // shape
-	return_types.push_back(LogicalType::VARCHAR); // dtype
-	return_types.push_back(LogicalType::VARCHAR); // chunks
-	return_types.push_back(LogicalType::VARCHAR); // compressor
-	return_types.push_back(LogicalType::INTEGER); // zarr_version
-	return_types.push_back(LogicalType::VARCHAR); // fill_value
-
-	names.push_back("name");
-	names.push_back("shape");
-	names.push_back("dtype");
-	names.push_back("chunks");
-	names.push_back("compressor");
-	names.push_back("zarr_version");
-	names.push_back("fill_value");
-
-	return nullptr;
-}
-
-static unique_ptr<FunctionData> ReadZarrMetadataInit(ClientContext &context, TableFunctionInitInput &input) {
-	auto state = make_uniq<ReadZarrMetadataState>();
-
-	// Get the path from the function arguments
-	auto &path_arg = input.input.inputs[0];
-	auto path = path_arg.GetValue<string>();
-
-	// Parse Zarr metadata
-	try {
-		state->arrays = ParseZarrMetadata(path);
-	} catch (const std::exception &e) {
-		throw InvalidException("Failed to parse Zarr metadata: " + std::string(e.what()));
-	}
-
-	state->current_index = 0;
-	return std::move(state);
 }
 
 static TableFunction GetReadZarrMetadataFunction() {

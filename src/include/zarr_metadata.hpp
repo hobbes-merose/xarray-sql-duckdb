@@ -1,7 +1,6 @@
 #pragma once
 
 #include "duckdb.hpp"
-#include "duckdb/common/optional_ptr.hpp"
 #include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
@@ -18,7 +17,7 @@ struct ZarrArrayMetadata {
 	std::string compressor;      //! Compressor name (e.g., "blosc", "zstd")
 	int zarr_version;            //! Zarr format version (2 or 3)
 	std::string fill_value;      //! Fill value as string
-	optional_ptr<std::string> dimension_separator;
+	std::string dimension_separator;
 };
 
 //! Parse Zarr metadata from a store path and return list of arrays
