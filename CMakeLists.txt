@@ -26,6 +26,7 @@ set(EXTENSION_SOURCES
     src/zarr/metadata.cpp
     src/zarr/chunk.cpp
     src/zarr/pivot.cpp
+    src/zarr/table_function.cpp
 )
 
 set(EXTENSION_HEADERS
@@ -33,6 +34,7 @@ set(EXTENSION_HEADERS
     src/include/zarr/metadata.hpp
     src/include/zarr/chunk.hpp
     src/include/zarr/pivot.hpp
+    src/include/zarr/table_function.hpp
 )
 
 build_static_extension(${TARGET_NAME} ${EXTENSION_SOURCES} ${EXTENSION_HEADERS})
