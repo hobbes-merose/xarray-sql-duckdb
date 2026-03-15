@@ -1,11 +1,11 @@
 #pragma once
 
 #include "duckdb.hpp"
+#include "duckdb/common/optional_ptr.hpp"
 #include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
 #include <memory>
-#include <optional>
 
 namespace duckdb {
 
@@ -18,7 +18,7 @@ struct ZarrArrayMetadata {
 	std::string compressor;      //! Compressor name (e.g., "blosc", "zstd")
 	int zarr_version;            //! Zarr format version (2 or 3)
 	std::string fill_value;      //! Fill value as string
-	std::optional<std::string> dimension_separator;
+	optional_ptr<std::string> dimension_separator;
 };
 
 //! Parse Zarr metadata from a store path and return list of arrays
@@ -54,7 +54,7 @@ private:
 	ZarrArrayMetadata ParseZarray(const std::string &zarray_content, const std::string &name);
 
 	//! Parse Zarr v3 metadata (zarr.json)
-	std::optional<ZarrArrayMetadata> ParseZarrJson(const nlohmann::json &json, const std::string &name);
+	void ParseZarrJson(const nlohmann::json &json, const std::string &name);
 
 	//! Normalize dtype string
 	std::string NormalizeDtype(const std::string &dtype);

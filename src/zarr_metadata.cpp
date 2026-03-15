@@ -1,6 +1,8 @@
 #include "zarr_metadata.hpp"
 #include "duckdb/common/common.hpp"
 #include "duckdb/common/file_system.hpp"
+#include "duckdb/common/local_file_system.hpp"
+#include "duckdb/common/string_util.hpp"
 #include <nlohmann/json.hpp>
 
 namespace duckdb {
@@ -23,19 +25,19 @@ void ZarrMetadata::Parse(const std::string &path) {
 
 	try {
 		// Get the file system
-		auto &fs = FileSystem::GetFileSystem(nullptr);
+		LocalFileSystem fs;
 
 		// Try to read the zarr.json file (Zarr v3 group metadata)
 		// or check if it's a directory with .zarray files (Zarr v2)
 
 		std::string metadata_path = path;
-		if (!path.ends_with("/") && !path.ends_with(".zarr")) {
+		if (!StringUtil::EndsWith(path, "/") && !StringUtil::EndsWith(path, ".zarr")) {
 			// Handle cases where path might not have trailing slash
 		}
 
 		// First, try to read zarr.json (Zarr v3)
 		std::string zarr_json_path = path;
-		if (!zarr_json_path.ends_with("/")) {
+		if (!StringUtil::EndsWith(zarr_json_path, "/")) {
 			zarr_json_path += "/";
 		}
 		zarr_json_path += "zarr.json";
@@ -57,10 +59,7 @@ void ZarrMetadata::Parse(const std::string &path) {
 
 					// Check if it's an array (has shape)
 					if (metadata.contains("shape")) {
-						auto array_meta = ParseZarrJson(json, "");
-						if (array_meta) {
-							arrays_.push_back(*array_meta);
-						}
+						ParseZarrJson(json, "");
 					}
 					// Check for arrays in subgroups
 					if (json.contains("attributes") && json["attributes"].contains("zarr")) {
@@ -99,11 +98,11 @@ void ZarrMetadata::Parse(const std::string &path) {
 		// Parse .zarray for each array found
 		for (const auto &array_path : zarray_files) {
 			std::string zarray_path = path;
-			if (!zarray_path.ends_with("/")) {
+			if (!StringUtil::EndsWith(zarray_path, "/")) {
 				zarray_path += "/";
 			}
 			zarray_path += array_path;
-			if (!array_path.empty() && !zarray_path.ends_with("/")) {
+			if (!array_path.empty() && !StringUtil::EndsWith(zarray_path, "/")) {
 				zarray_path += "/";
 			}
 			zarray_path += ".zarray";
@@ -115,10 +114,10 @@ void ZarrMetadata::Parse(const std::string &path) {
 				fs.Read(*file_handle, char_ptr_cast(content.data()), file_size);
 
 				std::string name = array_path;
-				if (name.starts_with("/")) {
+				if (StringUtil::StartsWith(name, "/")) {
 					name = name.substr(1);
 				}
-				if (name.ends_with("/.zarray")) {
+				if (StringUtil::EndsWith(name, "/.zarray")) {
 					name = name.substr(0, name.size() - 8);
 				}
 
@@ -197,9 +196,9 @@ ZarrArrayMetadata ZarrMetadata::ParseZarray(const std::string &zarray_content, c
 	return meta;
 }
 
-std::optional<ZarrArrayMetadata> ZarrMetadata::ParseZarrJson(const nlohmann::json &json, const std::string &name) {
+void ZarrMetadata::ParseZarrJson(const nlohmann::json &json, const std::string &name) {
 	if (!json.contains("metadata")) {
-		return std::nullopt;
+		return;
 	}
 
 	auto &metadata = json["metadata"];
@@ -254,7 +253,7 @@ std::optional<ZarrArrayMetadata> ZarrMetadata::ParseZarrJson(const nlohmann::jso
 		}
 	}
 
-	return meta;
+	arrays_.push_back(meta);
 }
 
 std::string ZarrMetadata::NormalizeDtype(const std::string &dtype) {
