@@ -258,8 +258,6 @@ std::optional<ZarrArrayMetadata> ZarrMetadata::ParseZarrJson(const nlohmann::jso
 }
 
 std::string ZarrMetadata::NormalizeDtype(const std::string &dtype) {
-	// Zarr uses numpy-style dtype strings, simplify them
-	std::string result = dtype;
 
 	// Handle common types
 	if (dtype == "<i1" || dtype == "i1" || dtype == "int8")
@@ -291,7 +289,7 @@ std::string ZarrMetadata::NormalizeDtype(const std::string &dtype) {
 	if (dtype == "|O" || dtype == "object")
 		return "object";
 
-	return result;
+	return dtype;
 }
 
 std::string ZarrMetadata::FillValueToString(const nlohmann::json &fill_value) {

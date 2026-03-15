@@ -15,6 +15,8 @@
 namespace duckdb {
 
 inline void ZarrScalarFun(DataChunk &args, ExpressionState &state, Vector &result) {
+	(void) args;
+	(void) state;
 	auto &name_vector = args.data[0];
 	UnaryExecutor::Execute<string_t, string_t>(name_vector, result, args.size(), [&](string_t name) {
 		return StringVector::AddString(result, "zarr " + name.GetString() + " 🦆");
@@ -22,6 +24,8 @@ inline void ZarrScalarFun(DataChunk &args, ExpressionState &state, Vector &resul
 }
 
 inline void ZarrOpenSSLVersionScalarFun(DataChunk &args, ExpressionState &state, Vector &result) {
+	(void) args;
+	(void) state;
 	auto &name_vector = args.data[0];
 	UnaryExecutor::Execute<string_t, string_t>(name_vector, result, args.size(), [&](string_t name) {
 		return StringVector::AddString(result, "zarr " + name.GetString() + ", my linked OpenSSL version is " +
@@ -101,6 +105,8 @@ static void ReadZarrMetadataFunction(ClientContext &context, TableFunctionInput 
 }
 
 static unique_ptr<FunctionData> ReadZarrMetadataBind(ClientContext &context, TableFunctionBindInfo &bind_info,
+	(void) context;
+	(void) bind_info;
                                                      vector<LogicalType> &return_types, vector<string> &names) {
 	// Define return types
 	return_types.push_back(LogicalType::VARCHAR); // name
@@ -140,12 +146,9 @@ static unique_ptr<FunctionData> ReadZarrMetadataInit(ClientContext &context, Tab
 	return std::move(state);
 }
 
-static void ReadZarrMetadataFunctionSimple(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
-	ReadZarrMetadataFunction(context, data_p, output);
-}
 
 static TableFunction GetReadZarrMetadataFunction() {
-	return TableFunction("read_zarr_metadata", {LogicalType::VARCHAR}, ReadZarrMetadataFunctionSimple,
+	return TableFunction("read_zarr_metadata", {LogicalType::VARCHAR}, ReadZarrMetadataFunction,
 	                     ReadZarrMetadataBind, ReadZarrMetadataInit);
 }
 
