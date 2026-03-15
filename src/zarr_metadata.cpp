@@ -172,7 +172,8 @@ ZarrArrayMetadata ZarrMetadata::ParseZarray(const std::string &zarray_content, c
 		auto *shape_val = duckdb_yyjson::yyjson_obj_get(json, "shape");
 		if (shape_val && duckdb_yyjson::yyjson_is_arr(shape_val)) {
 			size_t idx, max;
-			duckdb_yyjson::yyjson_arr_foreach(shape_val, idx, max, auto *dim) {
+			yyjson_val *dim;
+			duckdb_yyjson::yyjson_arr_foreach(shape_val, idx, max, dim) {
 				if (duckdb_yyjson::yyjson_is_int(dim)) {
 					meta.shape.push_back(duckdb_yyjson::yyjson_get_int(dim));
 				}
@@ -183,7 +184,8 @@ ZarrArrayMetadata ZarrMetadata::ParseZarray(const std::string &zarray_content, c
 		auto *chunks_val = duckdb_yyjson::yyjson_obj_get(json, "chunks");
 		if (chunks_val && duckdb_yyjson::yyjson_is_arr(chunks_val)) {
 			size_t idx, max;
-			duckdb_yyjson::yyjson_arr_foreach(chunks_val, idx, max, auto *chunk) {
+			yyjson_val *chunk;
+			duckdb_yyjson::yyjson_arr_foreach(chunks_val, idx, max, chunk) {
 				if (duckdb_yyjson::yyjson_is_int(chunk)) {
 					meta.chunks.push_back(duckdb_yyjson::yyjson_get_int(chunk));
 				}
@@ -238,7 +240,8 @@ void ZarrMetadata::ParseZarrJson(duckdb_yyjson::yyjson_val *json, const std::str
 	auto *shape_val = duckdb_yyjson::yyjson_obj_get(metadata_val, "shape");
 	if (shape_val && duckdb_yyjson::yyjson_is_arr(shape_val)) {
 		size_t idx, max;
-		duckdb_yyjson::yyjson_arr_foreach(shape_val, idx, max, auto *dim) {
+		yyjson_val *dim;
+		duckdb_yyjson::yyjson_arr_foreach(shape_val, idx, max, dim) {
 			if (duckdb_yyjson::yyjson_is_int(dim)) {
 				meta.shape.push_back(duckdb_yyjson::yyjson_get_int(dim));
 			} else if (duckdb_yyjson::yyjson_is_null(dim)) {
@@ -253,7 +256,8 @@ void ZarrMetadata::ParseZarrJson(duckdb_yyjson::yyjson_val *json, const std::str
 		auto *chunk_shape_val = duckdb_yyjson::yyjson_obj_get(chunk_grid_val, "chunk_shape");
 		if (chunk_shape_val && duckdb_yyjson::yyjson_is_arr(chunk_shape_val)) {
 			size_t idx, max;
-			duckdb_yyjson::yyjson_arr_foreach(chunk_shape_val, idx, max, auto *chunk) {
+			yyjson_val *chunk;
+			duckdb_yyjson::yyjson_arr_foreach(chunk_shape_val, idx, max, chunk) {
 				if (duckdb_yyjson::yyjson_is_int(chunk)) {
 					meta.chunks.push_back(duckdb_yyjson::yyjson_get_int(chunk));
 				}
@@ -276,7 +280,8 @@ void ZarrMetadata::ParseZarrJson(duckdb_yyjson::yyjson_val *json, const std::str
 	if (codecs_val && duckdb_yyjson::yyjson_is_arr(codecs_val)) {
 		std::vector<std::string> codecs;
 		size_t idx, max;
-		duckdb_yyjson::yyjson_arr_foreach(codecs_val, idx, max, auto *codec) {
+		yyjson_val *codec;
+		duckdb_yyjson::yyjson_arr_foreach(codecs_val, idx, max, codec) {
 			if (duckdb_yyjson::yyjson_is_str(codec)) {
 				codecs.push_back(duckdb_yyjson::yyjson_get_str(codec));
 			} else if (duckdb_yyjson::yyjson_is_obj(codec)) {
