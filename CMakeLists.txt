@@ -8,25 +8,27 @@ set(TARGET_NAME zarr)
 # remove or replace with other dependencies. Note that it should also be removed
 # from vcpkg.json to prevent needlessly installing it..
 find_package(OpenSSL REQUIRED)
-find_package(nlohmann_json REQUIRED)
+
+# yyjson is included from DuckDB's third_party directory
+set(YYJSON_INCLUDE_DIR "${DUCKDB_SRCDIR}/third_party/yyjson/include")
 
 set(EXTENSION_NAME ${TARGET_NAME}_extension)
 set(LOADABLE_EXTENSION_NAME ${TARGET_NAME}_loadable_extension)
 
 project(${TARGET_NAME})
 include_directories(src/include)
+include_directories(${YYJSON_INCLUDE_DIR})
 
 set(EXTENSION_SOURCES src/zarr_extension.cpp src/zarr_metadata.cpp)
 
 build_static_extension(${TARGET_NAME} ${EXTENSION_SOURCES})
 build_loadable_extension(${TARGET_NAME} " " ${EXTENSION_SOURCES})
 
-# Link OpenSSL and nlohmann-json in both the static library as the loadable
-# extension
+# Link OpenSSL and yyjson in both the static library as the loadable extension
 target_link_libraries(${EXTENSION_NAME} OpenSSL::SSL OpenSSL::Crypto
-                      nlohmann_json::nlohmann_json)
+                      duckdb_yyjson)
 target_link_libraries(${LOADABLE_EXTENSION_NAME} OpenSSL::SSL OpenSSL::Crypto
-                      nlohmann_json::nlohmann_json)
+                      duckdb_yyjson)
 
 install(
   TARGETS ${EXTENSION_NAME}

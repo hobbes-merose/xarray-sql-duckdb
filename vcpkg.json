@@ -1,7 +1,6 @@
 {
         "dependencies": [
-                "openssl",
-                "nlohmann-json"
+                "openssl"
         ],
         "vcpkg-configuration": {
                 "overlay-ports": [

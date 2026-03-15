@@ -1,7 +1,7 @@
 #pragma once
 
 #include "duckdb.hpp"
-#include <nlohmann/json.hpp>
+#include "yyjson.hpp"
 #include <string>
 #include <vector>
 #include <memory>
@@ -53,13 +53,13 @@ private:
 	ZarrArrayMetadata ParseZarray(const std::string &zarray_content, const std::string &name);
 
 	//! Parse Zarr v3 metadata (zarr.json)
-	void ParseZarrJson(const nlohmann::json &json, const std::string &name);
+	void ParseZarrJson(yyjson_val *json, const std::string &name);
 
 	//! Normalize dtype string
 	std::string NormalizeDtype(const std::string &dtype);
 
 	//! Convert fill_value to string
-	std::string FillValueToString(const nlohmann::json &fill_value);
+	std::string FillValueToString(yyjson_val *fill_value);
 };
 
 } // namespace duckdb
