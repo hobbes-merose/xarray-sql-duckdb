@@ -2,6 +2,8 @@
 
 #include "zarr_extension.hpp"
 #include "zarr_metadata.hpp"
+#include "zarr/metadata.hpp"
+#include "zarr/table_function.hpp"
 #include "duckdb.hpp"
 #include "duckdb/common/exception.hpp"
 #include "duckdb/function/scalar_function.hpp"
@@ -181,6 +183,7 @@ static void LoadInternal(ExtensionLoader &loader) {
 void ZarrExtension::Load(ExtensionLoader &loader) {
 	LoadInternal(loader);
 }
+
 std::string ZarrExtension::Name() {
 	return "zarr";
 }
