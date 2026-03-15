@@ -16,6 +16,10 @@ include_directories(src/include)
 
 # Include DuckDB headers for yyjson
 include_directories(${DUCKDB_SRCDIR}/third_party/yyjson/include)
+# Include compression library headers
+include_directories(${DUCKDB_SRCDIR}/third_party/lz4)
+include_directories(${DUCKDB_SRCDIR}/third_party/zstd/include)
+include_directories(${DUCKDB_SRCDIR}/third_party/miniz)
 
 set(EXTENSION_SOURCES
     src/zarr_extension.cpp
