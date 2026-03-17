@@ -131,6 +131,8 @@ humidity[t, lat, lon]     →    | 0         | 0   | 0   | 43          |
 
 ## 2.1 Implementation Approach
 
+### zarrs_ffi Integration
+
 ### Native C++ Reimplementation
 
 We are reimplementing the [zarr-datafusion](https://docs.rs/zarr-datafusion/latest/zarr_datafusion/) logic in C++ instead of using FFI (Foreign Function Interface). This approach offers several advantages:
@@ -159,10 +161,10 @@ The implementation is divided into 5 phases, targeting approximately **950 lines
 - Support both Zarr v2 and v3 metadata formats
 - Validate metadata consistency
 
-#### Phase 2: Chunk Reader + Decompression (~300 LOC)
-- Read binary chunk data from local files or cloud storage
-- Decompress using c-blosc2 (already in DuckDB tree)
-- Support multiple codecs: blosc, zstd, gzip, lz4
+#### Phase 2: Chunk Reader via zarrs_ffi (~150 LOC)
+- Use zarrs_ffi for chunk retrieval and decompression
+- Leverage zarrs' SIMD-optimized decoding (avx2/sse2)
+- Support codecs: blosc2, zstd, gzip, lz4, zfp, bitround, gdeflate
 - Handle partial chunk reads for query pushdown
 
 #### Phase 3: Pivot Algorithm (~200 LOC)
@@ -189,10 +191,11 @@ All dependencies are already available in the DuckDB ecosystem:
 
 | Dependency | Purpose | Status |
 |------------|---------|--------|
-| nlohmann/json | Header-only JSON parsing | Lightweight, single header |
-| c-blosc2 | Chunk decompression | Already in DuckDB tree |
-| libzstd | Zstd compression | Already in DuckDB tree |
+| zarrs_ffi | Zarr chunk reading & decoding | C/C++ FFI to Rust crate |
 | Arrow C++ | Arrow integration | Already a DuckDB dependency |
+| DuckDB yyjson | JSON metadata parsing | Already in DuckDB tree |
+
+**Note:** We no longer need nlohmann/json, c-blosc2, or libzstd as separate dependencies - zarrs_ffi handles all compression/decompression internally.
 
 ### The Pivot Algorithm
 
