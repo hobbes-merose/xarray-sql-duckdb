@@ -1,0 +1,11 @@
+{
+  "uuid": "a71f9910-e9cd-43f3-8564-913a4d2a52f2",
+  "display_id": 5,
+  "title": "Phase 3: Arrow-Based Pivot",
+  "description": "## Goal\nImplement ~100 LOC of Arrow-based pivot algorithm to convert n-dimensional array data to tabular format.\n\n## Tasks\n1. Core array-to-table transform algorithm using Arrow\n2. Use Arrow buffers directly for efficiency\n3. Dictionary encoding for coordinate columns (~75% memory savings)\n4. Strided memory access to convert chunk data to row-oriented format\n\n## The Pivot Algorithm\nThe pivot algorithm converts n-dimensional array data into a tabular format for SQL queries using strided memory access:\n\nFor each cell in the output table:\n1. Calculate the n-dimensional index from the row position\n2. Determine which chunk contains that index\n3. Calculate the offset within the chunk\n4. Apply strided access to read the value\n\nThis is strided memory access - the same technique used by NumPy arrays.\n\n## Key Optimization: Dictionary Encoding\nWhen flattening n-dimensional data, coordinate values repeat many times. Using dictionary encoding instead of plain arrays significantly reduces memory usage:\n\n| Approach | Memory for 10M rows |\n|----------|-------------------|\n| Plain arrays | ~300 MB |\n| DictionaryArray | ~75 MB |\n\n## Dependencies\n- Arrow C++: Already a DuckDB dependency\n\n## Definition of Done\n- [ ] Can pivot 1D coordinate arrays to table columns\n- [ ] Can pivot 2D+ data arrays to table columns\n- [ ] Dictionary encoding works for coordinate columns\n- [ ] Memory usage is reasonable (<2x raw data)\n- [ ] Build passes on CI",
+  "status": "open",
+  "priority": "medium",
+  "created_by": "anon-d18ab50f",
+  "created_at": "2026-03-17T19:30:36.308966689Z",
+  "updated_at": "2026-03-17T19:30:36.308966689Z"
+}
