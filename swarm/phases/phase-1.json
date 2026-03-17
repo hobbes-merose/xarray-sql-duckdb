@@ -1,12 +1,14 @@
 {
-  "name": "Phase 1",
+  "name": "Phase 1: DuckDB Integration & zarrs_ffi Wrapper (~150 LOC)",
   "status": "pending",
   "agents": [
     {
-      "slug": "zarr-extension-design-document",
-      "description": "Zarr Extension Design Document",
-      "branch": "feature/zarr-extension-design-document",
-      "status": "planned"
+      "slug": "duckdb-integration",
+      "description": "Table function registration, schema inference, vector conversion, predicate/projection pushdown",
+      "agent_id": "duckdb-integration",
+      "branch": "feature/phase-1-duckdb-integration",
+      "status": "planned",
+      "started_at": null
     }
   ]
 }

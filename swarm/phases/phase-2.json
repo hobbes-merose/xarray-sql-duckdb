@@ -1,0 +1,14 @@
+{
+  "name": "Phase 2: Chunk Reader via zarrs_ffi (~100 LOC)",
+  "status": "pending",
+  "agents": [
+    {
+      "slug": "chunk-reader",
+      "description": "Use zarrs_ffi for chunk retrieval and decompression, handle sharded arrays",
+      "agent_id": "chunk-reader",
+      "branch": "feature/phase-2-chunk-reader",
+      "status": "planned",
+      "started_at": null
+    }
+  ]
+}

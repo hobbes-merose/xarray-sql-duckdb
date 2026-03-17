@@ -1,0 +1,14 @@
+{
+  "name": "Phase 3: Arrow-Based Pivot (~100 LOC)",
+  "status": "pending",
+  "agents": [
+    {
+      "slug": "arrow-pivot",
+      "description": "Array-to-table transform using Arrow buffers, dictionary encoding for coordinates",
+      "agent_id": "arrow-pivot",
+      "branch": "feature/phase-3-arrow-pivot",
+      "status": "planned",
+      "started_at": null
+    }
+  ]
+}

@@ -3,7 +3,5 @@
   "title": "Zarr Extension Design Document",
   "design_doc": "docs/DESIGN.md",
   "created_at": "2026-03-17T18:04:24.403130680+00:00",
-  "phases": [
-    "Phase 1"
-  ]
+  "phases": ["Phase 1", "Phase 2", "Phase 3"]
 }
