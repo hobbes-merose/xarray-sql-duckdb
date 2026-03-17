@@ -1,0 +1,12 @@
+{
+  "name": "Phase 1",
+  "status": "pending",
+  "agents": [
+    {
+      "slug": "zarr-extension-design-document",
+      "description": "Zarr Extension Design Document",
+      "branch": "feature/zarr-extension-design-document",
+      "status": "planned"
+    }
+  ]
+}
