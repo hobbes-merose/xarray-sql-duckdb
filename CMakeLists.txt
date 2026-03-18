@@ -19,6 +19,9 @@ include_directories(${DUCKDB_SRCDIR}/third_party/lz4)
 include_directories(${DUCKDB_SRCDIR}/third_party/zstd/include)
 include_directories(${DUCKDB_SRCDIR}/third_party/miniz)
 
+# Arrow is built into DuckDB core - include directories are handled by DuckDB
+# The Arrow headers are already available through DuckDB's build system
+
 set(EXTENSION_NAME ${TARGET_NAME}_extension)
 set(LOADABLE_EXTENSION_NAME ${TARGET_NAME}_loadable_extension)
 
@@ -37,6 +40,7 @@ set(EXTENSION_HEADERS
     src/include/zarr_extension.hpp
     src/include/zarr/metadata.hpp
     src/include/zarr/chunk.hpp
+    src/zarr/arrow_pivot.hpp
 )
 
 build_static_extension(${TARGET_NAME} ${EXTENSION_SOURCES} ${EXTENSION_HEADERS})
